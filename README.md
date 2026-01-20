@@ -42,6 +42,14 @@ uv run main.py --ckpt <ckpt_name>
 My best finetuned model achieved `92.9%` accuracy on its offline test set, and
 feels pretty good online, too.
 
-All detailed results can be found in [progress.md results](docs/progress.md#finetuning-results)
+All detailed results can be found in [attempt 2 results](docs/attempt_2.md/#finetuning-results)
 
+
+## Data
+My data and checkpoints can be downloaded from a public `s3` bucket.
+
+To download my raw_mouse_data (as a base for finetuning):
+`aws s3 sync s3://hectorastrom-str-mouse/raw_mouse_data ./raw_mouse_data`
+
+I intend to upload checkpoints later, when there is more interesting diversity available.
 ---
