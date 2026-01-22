@@ -73,7 +73,7 @@ def main():
     for i, count in zip(build_char_map(), data_module.train_counts):
         print(f"Idx {i}: count {count}")
 
-    wandblogger = WandbLogger(project="str(mouse)", tags=["pretrain", "uppercase", args.model], config=args)
+    wandblogger = WandbLogger(project="scribble", tags=["pretrain", "uppercase", args.model], config=args)
     ckpt = ModelCheckpoint(
         dirpath=f"checkpoints/{args.model}/pretrain/{wandblogger.experiment.name}",
         monitor="val_loss",

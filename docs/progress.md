@@ -34,17 +34,17 @@ this attempt had to be my own (and friends').
 
 Read about this attempt at [attempt 3](attempt_3.md).
 
-# What's next for **str(mouse)**?
-**str(mouse)**, at is current state, is a cool demo; but it doesn't provide value to
-anyone. I could see **str(mouse)** becoming a useful medium to interact with
+# What's next for **scribble**?
+**scribble**, at is current state, is a cool demo; but it doesn't provide value to
+anyone. I could see **scribble** becoming a useful medium to interact with
 computers for those with physical disabilities or those with fine motor
 impairments.
 
-**str(mouse)** could also become a cool tool for everyone else. Effectively,
+**scribble** could also become a cool tool for everyone else. Effectively,
 this software transforms the mouse into an additional input medium (e.g. for 
 executing a macro or a bunch of on-device gestures!)
 
-Here are what I think the biggest limitations of **str(mouse)** are, and how I
+Here are what I think the biggest limitations of **scribble** are, and how I
 intend to solve them:
 1. Character recognition is best paired with natural language parser
     - We could pair the outputs & confidence levels from mouse to char with a

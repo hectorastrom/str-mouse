@@ -77,7 +77,7 @@ def main():
     tags = ["finetune", "uppercase"]
     if not args.no_augment:
         tags.append("augmented")
-    wandblogger = WandbLogger(project="str(mouse)", tags=tags)
+    wandblogger = WandbLogger(project="scribble", tags=tags)
     ckpt = ModelCheckpoint(
         dirpath=f"checkpoints/mouse_finetune/{wandblogger.experiment.name}",
         monitor="val_loss",

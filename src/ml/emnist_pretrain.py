@@ -48,7 +48,7 @@ def main():
     print(f"Commencing training with {len(data_module.train_data)} training samples...")
     L.seed_everything(42, workers=True)
     model = StrokeNet(num_classes=27, dropout_p=0.1, finetune=False)
-    wandblogger = WandbLogger(project="str(mouse)", tags=["pretrain", "lowercase"])
+    wandblogger = WandbLogger(project="scribble", tags=["pretrain", "lowercase"])
 
     ckpt = ModelCheckpoint(
         dirpath=f"checkpoints/emnist_pretrain/{wandblogger.experiment.name}",

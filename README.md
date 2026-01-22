@@ -1,8 +1,8 @@
-# str(mouse)
+# scribble
 
 ## About
 
-**str(mouse)** can decode any cursor movement into one of 53 characters ('a-z',
+**scribble** can decode any cursor movement into one of 53 characters ('a-z',
 'A-Z' and space). It does this at a rate exceeding `400 chars/s` running
 on an M2 Pro MacBook, by transforming the mouse velocity data into an image of
 the character that is then classified by a lightweight (0.3M) CNN.

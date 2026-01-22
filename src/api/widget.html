@@ -1,5 +1,5 @@
 <!--
-  str(mouse) Embeddable Widget - Apple Watch Scribble Style
+  scribble Embeddable Widget - Apple Watch Scribble Style
 
   Features a grid of dots that light up as you draw, then coalesce
   toward the center when a character is recognized.
@@ -9,7 +9,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>str(mouse) - Draw to Decode</title>
+    <title>scribble - Draw to Decode</title>
     <style>
       :root {
         color-scheme: light;
@@ -27,28 +27,28 @@
         color: #111;
       }
 
-      .strmouse-container {
+      .scribble-container {
         max-width: 720px;
         margin: 0 auto;
       }
 
-      .strmouse-header {
+      .scribble-header {
         margin-bottom: 16px;
       }
 
-      .strmouse-header h2 {
+      .scribble-header h2 {
         margin: 0 0 4px 0;
         font-size: 20px;
         font-weight: 600;
       }
 
-      .strmouse-header p {
+      .scribble-header p {
         margin: 0;
         font-size: 14px;
         color: #666;
       }
 
-      .strmouse-status-bar {
+      .scribble-status-bar {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -58,7 +58,7 @@
         padding: 10px 14px;
       }
 
-      .strmouse-output {
+      .scribble-output {
         font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
         font-size: 16px;
         background: #f8f8f8;
@@ -73,12 +73,12 @@
         letter-spacing: 0.5px;
       }
 
-      .strmouse-output:empty::before {
+      .scribble-output:empty::before {
         content: "Start drawing...";
         color: #999;
       }
 
-      .strmouse-output .new-char {
+      .scribble-output .new-char {
         animation: charPop 0.3s ease-out;
       }
 
@@ -93,13 +93,13 @@
         }
       }
 
-      .strmouse-stats-row {
+      .scribble-stats-row {
         display: flex;
         align-items: center;
         gap: 12px;
       }
 
-      .strmouse-preview img {
+      .scribble-preview img {
         width: 48px;
         height: 48px;
         border: 1px solid #c0c0c0;
@@ -108,7 +108,7 @@
         display: block;
       }
 
-      .strmouse-stats {
+      .scribble-stats {
         font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
         font-size: 12px;
         text-align: right;
@@ -116,11 +116,11 @@
         min-width: 120px;
       }
 
-      .strmouse-stats span {
+      .scribble-stats span {
         display: block;
       }
 
-      .strmouse-canvas-wrap {
+      .scribble-canvas-wrap {
         border: 1px solid #d0d0d0;
         border-top: none;
         border-radius: 0 0 8px 8px;
@@ -128,7 +128,7 @@
         padding: 12px;
       }
 
-      .strmouse-canvas {
+      .scribble-canvas {
         width: 100%;
         height: auto;
         display: block;
@@ -139,48 +139,48 @@
         touch-action: none;
       }
 
-      .strmouse-hint {
+      .scribble-hint {
         margin-top: 10px;
         font-size: 12px;
         color: #888;
       }
 
-      .strmouse-error {
+      .scribble-error {
         color: #d32f2f;
         font-size: 12px;
         margin-top: 8px;
         display: none;
       }
 
-      .strmouse-error.visible {
+      .scribble-error.visible {
         display: block;
       }
     </style>
   </head>
   <body>
-    <div class="strmouse-container">
-      <div class="strmouse-header">
-        <h2>str(mouse)</h2>
+    <div class="scribble-container">
+      <div class="scribble-header">
+        <h2>scribble</h2>
         <p>Draw characters with your mouse. The model decodes your strokes in real-time.</p>
       </div>
 
-      <div class="strmouse-status-bar">
-        <div class="strmouse-output" id="strmouseOutput"></div>
-        <div class="strmouse-stats-row">
-          <div class="strmouse-preview">
-            <img id="strmousePreview" alt="preview" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" />
+      <div class="scribble-status-bar">
+        <div class="scribble-output" id="scribbleOutput"></div>
+        <div class="scribble-stats-row">
+          <div class="scribble-preview">
+            <img id="scribblePreview" alt="preview" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" />
           </div>
-          <div class="strmouse-stats">
-            <span>conf: <span id="strmouseConfidence">--</span></span>
-            <span>time: <span id="strmouseInference">--</span></span>
+          <div class="scribble-stats">
+            <span>conf: <span id="scribbleConfidence">--</span></span>
+            <span>time: <span id="scribbleInference">--</span></span>
           </div>
         </div>
       </div>
 
-      <div class="strmouse-canvas-wrap">
-        <canvas id="strmouseCanvas" class="strmouse-canvas" width="640" height="360"></canvas>
-        <div class="strmouse-hint">Move mouse over canvas to draw. Pause briefly between characters.</div>
-        <div class="strmouse-error" id="strmouseError"></div>
+      <div class="scribble-canvas-wrap">
+        <canvas id="scribbleCanvas" class="scribble-canvas" width="640" height="360"></canvas>
+        <div class="scribble-hint">Move mouse over canvas to draw. Pause briefly between characters.</div>
+        <div class="scribble-error" id="scribbleError"></div>
       </div>
     </div>
 
@@ -207,13 +207,13 @@
 
         // ============================================================
 
-        const canvas = document.getElementById("strmouseCanvas");
+        const canvas = document.getElementById("scribbleCanvas");
         const ctx = canvas.getContext("2d");
-        const outputEl = document.getElementById("strmouseOutput");
-        const confidenceEl = document.getElementById("strmouseConfidence");
-        const inferenceEl = document.getElementById("strmouseInference");
-        const previewImg = document.getElementById("strmousePreview");
-        const errorEl = document.getElementById("strmouseError");
+        const outputEl = document.getElementById("scribbleOutput");
+        const confidenceEl = document.getElementById("scribbleConfidence");
+        const inferenceEl = document.getElementById("scribbleInference");
+        const previewImg = document.getElementById("scribblePreview");
+        const errorEl = document.getElementById("scribbleError");
 
         // Sampling configuration
         const sampleIntervalMs = 10;

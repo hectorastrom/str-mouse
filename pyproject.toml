@@ -1,5 +1,5 @@
 [project]
-name = "strmouse"
+name = "scribble"
 version = "0.1.0"
 description = "Convert mouse velocity data into characters on device"
 readme = "README.md"

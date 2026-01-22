@@ -36,7 +36,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="str(mouse) API",
+    title="scribble API",
     description="Decode mouse movements into characters using StrokeNet CNN",
     version="1.0.0",
     lifespan=lifespan,
@@ -123,7 +123,7 @@ def health_check():
 def root():
     """Root endpoint with API info."""
     return {
-        "name": "str(mouse) API",
+        "name": "scribble API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",

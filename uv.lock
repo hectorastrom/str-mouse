@@ -2497,7 +2497,7 @@ wheels = [
 ]
 
 [[package]]
-name = "strmouse"
+name = "scribble"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

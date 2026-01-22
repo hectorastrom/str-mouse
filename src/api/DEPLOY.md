@@ -1,11 +1,11 @@
-# str(mouse) API Deployment Guide
+# scribble API Deployment Guide
 
-Deploy the str(mouse) API to an EC2 instance at `api.hectorastrom.com`.
+Deploy the scribble API to an EC2 instance at `api.hectorastrom.com`.
 
 ## Architecture
 
 ```
-hectorastrom.com/blog/strmouse  -->  api.hectorastrom.com/predict
+hectorastrom.com/blog/scribble  -->  api.hectorastrom.com/predict
        (Next.js page)                   (FastAPI on EC2)
               |                                |
               v                                v
@@ -85,8 +85,8 @@ sudo apt install -y nginx
 
 ```bash
 cd ~
-git clone https://github.com/hectorastrom/strmouse.git
-cd strmouse
+git clone https://github.com/hectorastrom/scribble.git
+cd scribble
 
 # Install dependencies with uv
 uv sync
@@ -179,20 +179,20 @@ sudo systemctl reload nginx
 ### 6. Create Systemd Service
 
 ```bash
-sudo nano /etc/systemd/system/strmouse-api.service
+sudo nano /etc/systemd/system/scribble-api.service
 ```
 
 Add:
 
 ```ini
 [Unit]
-Description=str(mouse) API Server
+Description=scribble API Server
 After=network.target
 
 [Service]
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/strmouse
+WorkingDirectory=/home/ubuntu/scribble
 Environment="PATH=/home/ubuntu/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/home/ubuntu/.cargo/bin/uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8000
 Restart=always
@@ -206,14 +206,14 @@ Enable and start:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable strmouse-api
-sudo systemctl start strmouse-api
+sudo systemctl enable scribble-api
+sudo systemctl start scribble-api
 
 # Check status
-sudo systemctl status strmouse-api
+sudo systemctl status scribble-api
 
 # View logs
-sudo journalctl -u strmouse-api -f
+sudo journalctl -u scribble-api -f
 ```
 
 ## Cloudflare DNS Setup
@@ -265,7 +265,7 @@ curl -X POST https://api.hectorastrom.com/predict \
 
 The widget needs to be converted to a React component for Next.js. Create this component:
 
-### `components/StrMouseWidget.tsx`
+### `components/scribbleWidget.tsx`
 
 ```tsx
 "use client";
@@ -281,7 +281,7 @@ interface PredictResponse {
   image_data_url: string;
 }
 
-export default function StrMouseWidget() {
+export default function scribbleWidget() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [output, setOutput] = useState("");
   const [confidence, setConfidence] = useState<string>("--");
@@ -514,13 +514,13 @@ export default function StrMouseWidget() {
 ### Usage in a Blog Post Page
 
 ```tsx
-// app/blog/strmouse/page.tsx
-import StrMouseWidget from "@/components/StrMouseWidget";
+// app/blog/scribble/page.tsx
+import scribbleWidget from "@/components/scribbleWidget";
 
-export default function StrMouseBlogPost() {
+export default function scribbleBlogPost() {
   return (
     <article className="prose lg:prose-xl mx-auto py-8">
-      <h1>str(mouse): Decoding Characters from Mouse Movement</h1>
+      <h1>scribble: Decoding Characters from Mouse Movement</h1>
 
       <p>
         Try it yourself! Draw characters with your mouse and watch the model
@@ -528,7 +528,7 @@ export default function StrMouseBlogPost() {
       </p>
 
       <div className="not-prose my-8">
-        <StrMouseWidget />
+        <scribbleWidget />
       </div>
 
       <p>
@@ -546,12 +546,12 @@ If you prefer not to add a React component, you can host `widget.html` as a stat
 
 ```tsx
 // In your Next.js page
-export default function StrMouseBlogPost() {
+export default function scribbleBlogPost() {
   return (
     <article>
-      <h1>str(mouse)</h1>
+      <h1>scribble</h1>
       <iframe
-        src="/strmouse-widget.html"
+        src="/scribble-widget.html"
         width="100%"
         height="500"
         style={{ border: "none", borderRadius: "8px" }}
@@ -561,7 +561,7 @@ export default function StrMouseBlogPost() {
 }
 ```
 
-Place `widget.html` in your `public/` directory as `public/strmouse-widget.html`.
+Place `widget.html` in your `public/` directory as `public/scribble-widget.html`.
 
 ## API Reference
 
@@ -580,7 +580,7 @@ Root endpoint with API info.
 
 **Response:**
 ```json
-{"name": "str(mouse) API", "version": "1.0.0", "docs": "/docs", "health": "/health"}
+{"name": "scribble API", "version": "1.0.0", "docs": "/docs", "health": "/health"}
 ```
 
 ### `POST /predict`
@@ -613,21 +613,21 @@ Predict character from mouse velocity data.
 ### View Logs
 
 ```bash
-sudo journalctl -u strmouse-api -f
+sudo journalctl -u scribble-api -f
 ```
 
 ### Restart Service
 
 ```bash
-sudo systemctl restart strmouse-api
+sudo systemctl restart scribble-api
 ```
 
 ### Update Code
 
 ```bash
-cd ~/strmouse
+cd ~/scribble
 git pull
-sudo systemctl restart strmouse-api
+sudo systemctl restart scribble-api
 ```
 
 ## Cost Estimate
@@ -645,8 +645,8 @@ Use Spot Instances or Reserved Instances for additional savings.
 
 Check if the service is running:
 ```bash
-sudo systemctl status strmouse-api
-sudo journalctl -u strmouse-api --since "5 minutes ago"
+sudo systemctl status scribble-api
+sudo journalctl -u scribble-api --since "5 minutes ago"
 ```
 
 ### CORS errors in browser console
@@ -681,7 +681,7 @@ Restart the service after changes.
 
 Verify checkpoint exists:
 ```bash
-ls -la ~/strmouse/checkpoints/mouse_finetune/best_finetune/best.ckpt
+ls -la ~/scribble/checkpoints/mouse_finetune/best_finetune/best.ckpt
 ```
 
 Set custom path via environment variable in the systemd service:
