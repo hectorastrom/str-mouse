@@ -1,0 +1,428 @@
+<!--
+  str(mouse) Embeddable Widget
+
+  This widget can be embedded in any blog post or webpage.
+  It sends mouse velocity data to the API and displays predictions.
+
+  Usage: Copy this HTML into your blog post, or include via iframe.
+  Configure API_BASE to point to your deployed API (e.g., https://api.hectorastrom.com)
+-->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>str(mouse) - Draw to Decode</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: #f4f4f4;
+        color: #111;
+      }
+
+      .strmouse-container {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      .strmouse-header {
+        margin-bottom: 16px;
+      }
+
+      .strmouse-header h2 {
+        margin: 0 0 4px 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .strmouse-header p {
+        margin: 0;
+        font-size: 14px;
+        color: #666;
+      }
+
+      .strmouse-status-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #ffffff;
+        border: 1px solid #d0d0d0;
+        border-radius: 8px 8px 0 0;
+        padding: 10px 14px;
+      }
+
+      .strmouse-output {
+        font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
+        font-size: 14px;
+        background: #f8f8f8;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 12px;
+        min-width: 200px;
+        max-width: 400px;
+        min-height: 24px;
+        word-wrap: break-word;
+        color: #333;
+      }
+
+      .strmouse-output:empty::before {
+        content: "Start drawing...";
+        color: #999;
+      }
+
+      .strmouse-stats-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .strmouse-preview img {
+        width: 48px;
+        height: 48px;
+        border: 1px solid #c0c0c0;
+        border-radius: 4px;
+        background: #fff;
+        display: block;
+      }
+
+      .strmouse-stats {
+        font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
+        font-size: 12px;
+        text-align: right;
+        color: #666;
+        min-width: 140px;
+      }
+
+      .strmouse-stats span {
+        display: block;
+      }
+
+      .strmouse-canvas-wrap {
+        border: 1px solid #d0d0d0;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        background: #ffffff;
+        padding: 12px;
+      }
+
+      .strmouse-canvas {
+        width: 100%;
+        height: auto;
+        display: block;
+        background: #ffffff;
+        border: 1px solid #c0c0c0;
+        border-radius: 6px;
+        cursor: crosshair;
+        touch-action: none;
+      }
+
+      .strmouse-hint {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #888;
+      }
+
+      .strmouse-clear-btn {
+        background: #f0f0f0;
+        border: 1px solid #d0d0d0;
+        border-radius: 4px;
+        padding: 4px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        color: #555;
+      }
+
+      .strmouse-clear-btn:hover {
+        background: #e8e8e8;
+      }
+
+      .strmouse-error {
+        color: #d32f2f;
+        font-size: 12px;
+        margin-top: 8px;
+        display: none;
+      }
+
+      .strmouse-error.visible {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="strmouse-container">
+      <div class="strmouse-header">
+        <h2>str(mouse)</h2>
+        <p>Draw characters with your mouse. The model decodes your strokes in real-time.</p>
+      </div>
+
+      <div class="strmouse-status-bar">
+        <div class="strmouse-output" id="strmouseOutput"></div>
+        <div class="strmouse-stats-row">
+          <div class="strmouse-preview">
+            <img id="strmousePreview" alt="preview" />
+          </div>
+          <div class="strmouse-stats">
+            <span>conf: <span id="strmouseConfidence">--</span></span>
+            <span>time: <span id="strmouseInference">--</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="strmouse-canvas-wrap">
+        <canvas id="strmouseCanvas" class="strmouse-canvas" width="640" height="360"></canvas>
+        <div class="strmouse-hint">
+          <span>Move mouse over canvas to draw. Pause briefly between characters.</span>
+          <button class="strmouse-clear-btn" id="strmouseClear">Clear Output</button>
+        </div>
+        <div class="strmouse-error" id="strmouseError"></div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ============================================================
+        // CONFIGURATION - Auto-detects local vs production
+        // ============================================================
+        const isLocal = window.location.hostname === "localhost" ||
+                        window.location.hostname === "127.0.0.1";
+        const API_BASE = isLocal ? "" : "https://api.hectorastrom.com";
+        // ============================================================
+
+        const canvas = document.getElementById("strmouseCanvas");
+        const ctx = canvas.getContext("2d");
+        const outputEl = document.getElementById("strmouseOutput");
+        const confidenceEl = document.getElementById("strmouseConfidence");
+        const inferenceEl = document.getElementById("strmouseInference");
+        const previewImg = document.getElementById("strmousePreview");
+        const clearBtn = document.getElementById("strmouseClear");
+        const errorEl = document.getElementById("strmouseError");
+
+        // Sampling configuration
+        const sampleIntervalMs = 10;
+        const inactivityMs = 250;
+        const minSamples = 3;
+
+        // State
+        let recordingActive = false;
+        let samplingTimer = null;
+        let currentPos = null;
+        let lastLoggedPos = null;
+        let lastMoveTime = 0;
+        let velocities = []; // Store velocity objects directly
+        let lastDrawPos = null;
+        let flashAnimationId = null;
+        let flashStartTime = 0;
+        let decodedOutput = "";
+
+        function clearCanvas() {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawLine(from, to) {
+          ctx.strokeStyle = "#111111";
+          ctx.lineWidth = 2;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(to.x, to.y);
+          ctx.stroke();
+        }
+
+        function showError(msg) {
+          errorEl.textContent = msg;
+          errorEl.classList.add("visible");
+          setTimeout(() => errorEl.classList.remove("visible"), 5000);
+        }
+
+        function startSampling() {
+          if (samplingTimer) {
+            clearInterval(samplingTimer);
+          }
+          samplingTimer = setInterval(sampleVelocity, sampleIntervalMs);
+        }
+
+        function startRecording(pos) {
+          recordingActive = true;
+          velocities = [];
+          currentPos = { x: pos.x, y: pos.y };
+          lastLoggedPos = { x: pos.x, y: pos.y };
+          lastMoveTime = performance.now();
+          startSampling();
+        }
+
+        function sampleVelocity() {
+          if (!recordingActive) return;
+
+          const vx = currentPos.x - lastLoggedPos.x;
+          const vy = currentPos.y - lastLoggedPos.y;
+          lastLoggedPos = { x: currentPos.x, y: currentPos.y };
+
+          // Store velocity as object for JSON API
+          velocities.push({ vx, vy });
+
+          if (performance.now() - lastMoveTime >= inactivityMs && velocities.length >= minSamples) {
+            stopRecording();
+          }
+        }
+
+        function cancelFlash() {
+          if (flashAnimationId) {
+            cancelAnimationFrame(flashAnimationId);
+            flashAnimationId = null;
+          }
+        }
+
+        function flashLetter(letter) {
+          if (!letter) return;
+          cancelFlash();
+          flashStartTime = performance.now();
+          const durationMs = 400;
+          const fontSize = Math.min(canvas.width, canvas.height) * 0.6;
+
+          function animate(now) {
+            const elapsed = now - flashStartTime;
+            const t = Math.min(1, elapsed / durationMs);
+            clearCanvas();
+            ctx.save();
+            ctx.globalAlpha = 1 - t;
+            ctx.fillStyle = "#111111";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+            ctx.fillText(letter, canvas.width / 2, canvas.height / 2);
+            ctx.restore();
+
+            if (t < 1) {
+              flashAnimationId = requestAnimationFrame(animate);
+            } else {
+              flashAnimationId = null;
+              clearCanvas();
+            }
+          }
+
+          flashAnimationId = requestAnimationFrame(animate);
+        }
+
+        async function stopRecording() {
+          recordingActive = false;
+          if (samplingTimer) {
+            clearInterval(samplingTimer);
+            samplingTimer = null;
+          }
+          if (velocities.length === 0) return;
+
+          cancelFlash();
+          clearCanvas();
+
+          try {
+            const response = await fetch(`${API_BASE}/predict`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ velocities }),
+            });
+
+            if (!response.ok) {
+              const errData = await response.json().catch(() => ({}));
+              throw new Error(errData.detail || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Update UI
+            flashLetter(data.predicted_char);
+            decodedOutput += data.predicted_char;
+            outputEl.textContent = decodedOutput;
+
+            if (typeof data.confidence === "number") {
+              confidenceEl.textContent = `${data.confidence.toFixed(1)}%`;
+            }
+            if (typeof data.inference_ms === "number") {
+              inferenceEl.textContent = `${data.inference_ms.toFixed(1)}ms`;
+            }
+            if (data.image_data_url) {
+              previewImg.src = data.image_data_url;
+            }
+          } catch (error) {
+            console.error("Prediction failed:", error);
+            showError(`Error: ${error.message}`);
+          }
+
+          velocities = [];
+          lastDrawPos = null;
+        }
+
+        function getCanvasPos(event) {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+
+          // Support both mouse and touch events
+          const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+          const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+
+          return {
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY,
+          };
+        }
+
+        function handleMove(event) {
+          event.preventDefault();
+          const pos = getCanvasPos(event);
+
+          if (!recordingActive) {
+            cancelFlash();
+            startRecording(pos);
+          }
+          currentPos = { x: pos.x, y: pos.y };
+          lastMoveTime = performance.now();
+
+          if (lastDrawPos) {
+            drawLine(lastDrawPos, pos);
+          }
+          lastDrawPos = { x: pos.x, y: pos.y };
+        }
+
+        function handleLeave() {
+          lastDrawPos = null;
+        }
+
+        // Mouse events
+        canvas.addEventListener("mousemove", handleMove);
+        canvas.addEventListener("mouseleave", handleLeave);
+
+        // Touch events for mobile
+        canvas.addEventListener("touchmove", handleMove, { passive: false });
+        canvas.addEventListener("touchend", handleLeave);
+
+        // Clear button
+        clearBtn.addEventListener("click", () => {
+          decodedOutput = "";
+          outputEl.textContent = "";
+          confidenceEl.textContent = "--";
+          inferenceEl.textContent = "--";
+          previewImg.src = "";
+        });
+
+        // Initialize
+        clearCanvas();
+      })();
+    </script>
+  </body>
+</html>
