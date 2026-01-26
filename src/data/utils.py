@@ -342,7 +342,6 @@ class GlobalInputManager:
     
     Handles mouse velocity recording with configurable sampling rate.
     """
-
     def __init__(self, sampling_rate: int = 100):
         """
         Initialize the global input manager.
@@ -350,22 +349,21 @@ class GlobalInputManager:
         Args:
             sampling_rate: Sampling rate of mouse in Hz (default 100Hz)
         """
-        from pynput import keyboard, mouse # needed to protect headless services
-        
+        from pynput import keyboard, mouse  # needed to protect headless services
         self.sampling_rate = sampling_rate
         self.sample_interval = 1.0 / sampling_rate
-        
+
         # recording state
         self.recording_active = False
         self.recording_running = False
-        
+
         # position tracking for velocity calculation
         self.current_pos = (0, 0)
         self.last_logged_pos = (0, 0)
-        
+
         # recorded data storage
         self.recorded_velocities: list[tuple[str, float, float]] = []  # (timestamp, vx, vy)
-        
+
         # locks and events
         self.first_move_event = Event()
         self.space_pressed_event = Event()
@@ -386,7 +384,7 @@ class GlobalInputManager:
     def _on_global_move(self, x, y):
         """Handle mouse move events globally."""
         current_time = time.time()
-        
+
         # constantly update last move time, even when not recording
         with self.state_lock:
             self.last_move_time = current_time
@@ -405,6 +403,7 @@ class GlobalInputManager:
 
     def _on_global_press(self, key):
         """Handle key press events globally."""
+        from pynput import keyboard  # needed to protect headless services
         if key == keyboard.Key.space:
             self.space_pressed_event.set()
 
@@ -419,14 +418,14 @@ class GlobalInputManager:
     def _log_velocity_loop(self):
         """Background thread that logs velocity at the configured sampling rate."""
         from datetime import datetime
-        
+
         while self.recording_running:
             timestamp = datetime.now().isoformat()
             velocity_x, velocity_y = self._calculate_velocity()
-            
+
             with self.state_lock:
                 self.recorded_velocities.append((timestamp, velocity_x, velocity_y))
-            
+
             time.sleep(self.sample_interval)
 
     def wait_for_space(self):
@@ -442,20 +441,20 @@ class GlobalInputManager:
         Use stop_recording() to end and retrieve the data.
         """
         from threading import Thread
-        
+
         # reset state
         with self.state_lock:
             self.recorded_velocities = []
             self.last_move_time = time.time()
-        
+
         with self.velocity_lock:
             self.current_pos = (0, 0)
             self.last_logged_pos = (0, 0)
-        
+
         self.first_move_event.clear()
         self.recording_active = True
         self.recording_running = True
-        
+
         # start logging thread
         self._log_thread = Thread(target=self._log_velocity_loop, daemon=True)
         self._log_thread.start()
@@ -475,14 +474,14 @@ class GlobalInputManager:
         """
         self.recording_running = False
         self.recording_active = False
-        
+
         if hasattr(self, '_log_thread'):
             self._log_thread.join(timeout=1.0)
-        
+
         with self.state_lock:
             if not self.recorded_velocities:
                 return np.array([]).reshape(0, 2)
-            
+
             # extract just velocities (skip timestamps for the array)
             velocities = [(vx, vy) for _, vx, vy in self.recorded_velocities]
             return np.array(velocities, dtype=np.float64)
@@ -505,10 +504,10 @@ class GlobalInputManager:
             filename: Path to save the CSV file
         """
         import csv
-        
+
         with self.state_lock:
             data = list(self.recorded_velocities)
-        
+
         with open(filename, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["timestamp", "velocity_x", "velocity_y"])

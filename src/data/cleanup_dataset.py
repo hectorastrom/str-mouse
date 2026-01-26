@@ -36,7 +36,7 @@ def main():
         folder_name = char_to_folder_name(char)
         if not os.path.isdir(os.path.join(RAW_MOUSE_DATA_DIR, folder_name)):
             continue
-        filenames, arrays = load_chars(os.path.join(RAW_MOUSE_DATA_DIR, folder_name))
+        filenames, arrays = load_chars(os.path.join(RAW_MOUSE_DATA_DIR, folder_name), return_tensor=False)
         
         # automatically remove empty arrays
         valid_filenames = []

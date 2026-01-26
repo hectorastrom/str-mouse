@@ -24,7 +24,7 @@ def main():
     # handle 'space' string input -> ' ' char for folder lookup
     char_input = ' ' if CHARACTER.lower() == 'space' else CHARACTER
     folder_name = char_to_folder_name(char_input)
-    filenames, arrays = load_chars(f"{args.folder}/{folder_name}")
+    filenames, arrays = load_chars(f"{args.folder}/{folder_name}", return_tensor=False)
     plot_positions(filenames, arrays)
 
 def create_figure(nrows=4, ncols=8):

@@ -172,17 +172,14 @@ class MouseStrokeDataModule(L.LightningDataModule):
         idx_to_arrays = {}
         for char_idx, char_value in self.id2label.items():
             folder_name = char_to_folder_name(char_value)
-            _, character_arrays = load_chars(f"{self.cache_dir}/{folder_name}", max_trials=self.max_trials, silent=True)
-            idx_to_arrays[char_idx] = character_arrays
+            _, char_tensors = load_chars(f"{self.cache_dir}/{folder_name}", max_trials=self.max_trials, silent=True, return_tensor=True)
+            idx_to_arrays[char_idx] = char_tensors
 
-        # Preprocess character_arrays into images and create TensorDatasets
+        # Preprocess char_tensors into images and create TensorDatasets
         images = []
         labels = []
-        for char_idx, char_arrays in idx_to_arrays.items():
-            for arr in char_arrays:
-                x, y = arr
-                x_tensor = torch.from_numpy(x).to(dtype=torch.float32)
-                y_tensor = torch.from_numpy(y).to(dtype=torch.float32)
+        for char_idx, char_tensors in idx_to_arrays.items():
+            for x_tensor, y_tensor in char_tensors:
                 img = build_img(x_tensor, y_tensor, invert_colors=False, downsample_size=self.img_size) # from main.py preprocessing
                 images.append(img.unsqueeze(0)) # add channel dim
                 labels.append(char_idx)
