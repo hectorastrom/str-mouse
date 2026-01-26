@@ -8,7 +8,6 @@ import torch.nn.functional as F
 import pandas as pd
 import numpy as np
 from threading import Event, Lock
-from pynput import keyboard, mouse
 from datetime import datetime
 import time
 import re
@@ -351,6 +350,8 @@ class GlobalInputManager:
         Args:
             sampling_rate: Sampling rate of mouse in Hz (default 100Hz)
         """
+        from pynput import keyboard, mouse # needed to protect headless services
+        
         self.sampling_rate = sampling_rate
         self.sample_interval = 1.0 / sampling_rate
         

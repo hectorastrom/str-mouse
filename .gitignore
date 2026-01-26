@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# private
+.env
+
 # data
 emnist_data/
 raw_mouse_data/

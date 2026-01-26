@@ -56,26 +56,27 @@ We'll use **Full (Strict)** mode with a Cloudflare Origin Certificate on the EC2
 ### 1. Launch Instance
 
 Recommended specs for cost-effective inference:
-- **Instance type**: `t3.small` or `t3.medium` (2 vCPU, 2-4GB RAM)
+- **Instance type**: `t3.small` (2 vCPU, 2GB RAM)
 - **AMI**: Ubuntu 22.04 LTS
 - **Storage**: 20GB gp3
 - **Security Group**:
   - SSH (22) from your IP
-  - HTTP (80) from anywhere (Cloudflare will redirect to HTTPS)
-  - HTTPS (443) from anywhere
+  - Allow inbound 443 (and optionally 80) only from Cloudflare IP ranges
 
 ### 2. Connect and Install Dependencies
 
 ```bash
 ssh -i your-key.pem ubuntu@<ec2-public-ip>
 
-# Update system
+# System setup
 sudo apt update && sudo apt upgrade -y
+sudo reboot
+sudo apt-get install python3.11-dev linux-headers-$(uname -r)
+sudo apt-get install build-essential
 
 # Install Python 3.11+ and uv
 sudo apt install -y python3.11 python3.11-venv git
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.cargo/env
 
 # Install nginx
 sudo apt install -y nginx
@@ -84,27 +85,24 @@ sudo apt install -y nginx
 ### 3. Clone Repository and Setup
 
 ```bash
-cd ~
+mkdir projects
+cd projects
 git clone https://github.com/hectorastrom/scribble.git
 cd scribble
 
 # Install dependencies with uv
 uv sync
-
-# Download model checkpoint from S3
-mkdir -p checkpoints/mouse_finetune/best_finetune
-aws s3 cp s3://hectorastrom-str-mouse/checkpoints/mouse_finetune/best_finetune/best.ckpt \
-    checkpoints/mouse_finetune/best_finetune/best.ckpt
 ```
 
-### 4. Setup Cloudflare Origin Certificate (for Full SSL)
+### 4. Install a Cloudflare Origin Certificate (required for Full (strict))
 
-This creates a certificate that Cloudflare trusts, enabling encrypted traffic between Cloudflare and your server.
+Cloudflare terminates TLS for visitors at the edge (Browser ⇄ Cloudflare). **Full (strict)** also requires TLS on the second leg (Cloudflare ⇄ EC2). A **Cloudflare Origin Certificate** is a TLS certificate trusted by Cloudflare (not by public browsers) that secures that origin connection.
 
-1. Go to Cloudflare Dashboard → your domain → **SSL/TLS** → **Origin Server**
+1. Cloudflare Dashboard → your domain → **SSL/TLS** → **Origin Server**
 2. Click **Create Certificate**
-3. Keep defaults (RSA 2048, 15 years validity)
-4. Copy the **Origin Certificate** and **Private Key**
+3. Hostnames: include `api.hectorastrom.com` (and any other API subdomains you plan to use)
+4. Keep defaults (RSA 2048, long validity)
+5. Copy the **Origin Certificate** and **Private Key**
 
 On your EC2 instance:
 
@@ -112,71 +110,85 @@ On your EC2 instance:
 # Create certificate directory
 sudo mkdir -p /etc/ssl/cloudflare
 
-# Paste the Origin Certificate
+# Create certificate file
 sudo nano /etc/ssl/cloudflare/cert.pem
-# (paste certificate, save)
+# Paste the Origin Certificate (full PEM block), then save/exit
 
-# Paste the Private Key
+# Create private key file
 sudo nano /etc/ssl/cloudflare/key.pem
-# (paste key, save)
+# Paste the Private Key (full PEM block), then save/exit
 
-# Secure the key file
+# Lock down permissions
+sudo chown -R root:root /etc/ssl/cloudflare
+sudo chmod 644 /etc/ssl/cloudflare/cert.pem
 sudo chmod 600 /etc/ssl/cloudflare/key.pem
 ```
 
-### 5. Configure Nginx Reverse Proxy
+### 5. Configure Nginx reverse proxy (TLS termination + proxy to FastAPI)
+
+Create the Nginx site file:
 
 ```bash
 sudo nano /etc/nginx/sites-available/api.hectorastrom.com
 ```
 
-Add this configuration:
+Add:
 
 ```nginx
 server {
     listen 80;
     server_name api.hectorastrom.com;
+
     # Redirect HTTP to HTTPS
-    return 301 https://$server_name$request_uri;
+    return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl http2;
     server_name api.hectorastrom.com;
 
-    # Cloudflare Origin Certificate
-    ssl_certificate /etc/ssl/cloudflare/cert.pem;
+    # TLS certificate for Cloudflare -> origin (Origin Certificate)
+    ssl_certificate     /etc/ssl/cloudflare/cert.pem;
     ssl_certificate_key /etc/ssl/cloudflare/key.pem;
 
-    # Modern SSL configuration
+    # TLS settings
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
     ssl_prefer_server_ciphers off;
 
-    # Proxy to FastAPI
+    # Reverse proxy to FastAPI (listening on localhost only)
     location / {
         proxy_pass http://127.0.0.1:8000;
+
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+
+        # Cloudflare sets CF-Connecting-IP with the real client IP.
+        # Without additional real_ip config, $remote_addr will be a Cloudflare IP.
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
         proxy_read_timeout 60s;
         proxy_connect_timeout 60s;
     }
 }
 ```
 
-Enable the site:
+Enable the site and reload Nginx:
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/api.hectorastrom.com /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default  # Remove default site
-sudo nginx -t  # Test configuration
+
+sudo rm -f /etc/nginx/sites-enabled/default
+
+sudo nginx -t
+
 sudo systemctl reload nginx
 ```
 
-### 6. Create Systemd Service
+### 6. Create a systemd service for FastAPI (uvicorn)
+
+Create the unit file:
 
 ```bash
 sudo nano /etc/systemd/system/scribble-api.service
@@ -188,15 +200,17 @@ Add:
 [Unit]
 Description=scribble API Server
 After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/scribble
-Environment="PATH=/home/ubuntu/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/ubuntu/.cargo/bin/uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/home/ubuntu/projects/scribble
+Environment="PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ubuntu/.local/bin/uv run uvicorn src.api.main:app --host 127.0.0.1 --port 8000
 Restart=always
-RestartSec=5
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -209,56 +223,45 @@ sudo systemctl daemon-reload
 sudo systemctl enable scribble-api
 sudo systemctl start scribble-api
 
-# Check status
 sudo systemctl status scribble-api
-
-# View logs
 sudo journalctl -u scribble-api -f
 ```
 
-## Cloudflare DNS Setup
+## Cloudflare DNS setup
 
-### Adding the Subdomain
+### Add the `api` subdomain
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) → select `hectorastrom.com`
-2. Click **DNS** in the sidebar
-3. Click **Add record**
-4. Fill in:
-   - **Type**: `A`
-   - **Name**: `api` (this creates `api.hectorastrom.com`)
-   - **IPv4 address**: Your EC2 instance's public IP (e.g., `54.123.45.67`)
-   - **Proxy status**: **Proxied** (orange cloud ON) - this enables Cloudflare's SSL and protection
-   - **TTL**: Auto
-5. Click **Save**
+1. Cloudflare Dashboard → select `hectorastrom.com`
+2. **DNS** → **Add record**
+3. Create:
 
-### Configure SSL Mode
+   * **Type**: `A`
+   * **Name**: `api`
+   * **IPv4 address**: your EC2 public IP
+   * **Proxy status**: **Proxied** (orange cloud)
+   * **TTL**: Auto
+4. Save
 
-1. Go to **SSL/TLS** in the sidebar
-2. Under **Overview**, select **Full (strict)**
-   - This ensures traffic is encrypted end-to-end
-   - Requires the Origin Certificate we set up earlier
+### Set SSL mode to Full (strict)
 
-### Recommended Cloudflare Settings
+1. **SSL/TLS** → **Overview**
+2. Set mode to **Full (strict)**
 
-In **SSL/TLS** → **Edge Certificates**:
-- **Always Use HTTPS**: ON
-- **Minimum TLS Version**: TLS 1.2
+This encrypts both legs:
 
-In **Security** → **Settings**:
-- **Security Level**: Medium (or higher if you get attacks)
+* Browser ⇄ Cloudflare (Cloudflare Universal SSL)
+* Cloudflare ⇄ EC2 (Origin Certificate installed above)
 
-## Verify Deployment
+## Verify deployment
 
-Wait 1-2 minutes for DNS to propagate, then:
+After DNS propagates:
 
 ```bash
-# Health check
 curl https://api.hectorastrom.com/health
 
-# Test prediction
 curl -X POST https://api.hectorastrom.com/predict \
   -H "Content-Type: application/json" \
-  -d '{"velocities": [{"vx": 1, "vy": 0}, {"vx": 2, "vy": 1}, {"vx": 1, "vy": 2}]}'
+  -d '{"velocities":[{"vx":1,"vy":0},{"vx":2,"vy":1},{"vx":1,"vy":2}]}'
 ```
 
 ## Embedding in Next.js
