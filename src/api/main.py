@@ -1,8 +1,15 @@
+# @Time    : 2026-01-25 10:40
+# @Author  : Hector Astrom
+# @Email   : hastrom@mit.edu
+# @File    : main.py
+
+# Standalone FastAPI file to be hosted on AWS that serves the widget the best
+# variants of our model
 import base64
 import io
 import os
 from contextlib import asynccontextmanager
-from typing import List
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch as t
@@ -18,45 +25,76 @@ from src.data.utils import (
     velocities_to_positions,
 )
 from src.ml.architectures.cnn import StrokeNet
-from src.ml.utils import forward_pass, find_best_checkpoint, get_checkpoint_num_classes, FINETUNE_DIR
+from src.ml.utils import forward_pass, discover_all_checkpoints, FINETUNE_DIR
 
 
-def _get_default_ckpt_config() -> tuple[str, int]:
-    """
-    Get default checkpoint path and num_classes.
-    
-    Uses STROKNET_CKPT_PATH env var if set, otherwise finds the best checkpoint.
-    """
-    env_path = os.environ.get("STROKNET_CKPT_PATH")
-    if env_path:
-        # Extract num_classes from env path if possible
-        num_classes = get_checkpoint_num_classes(env_path)
-        if num_classes is None:
-            # Fallback: try to find best checkpoint for class count
-            _, num_classes = find_best_checkpoint("finetune")
-        return env_path, num_classes
-    
-    # Find best checkpoint dynamically
-    best_folder, num_classes = find_best_checkpoint("finetune")
-    return f"{FINETUNE_DIR}/{best_folder}/best.ckpt", num_classes
-
-
-DEFAULT_CKPT_PATH, DEFAULT_NUM_CLASSES = _get_default_ckpt_config()
 APP_DIR = os.path.dirname(__file__)
 WIDGET_PATH = os.path.join(APP_DIR, "widget.html")
+
+# Global model registry: maps num_classes -> loaded model
+_MODELS: Dict[int, StrokeNet] = {}
+_AVAILABLE_CHECKPOINTS: Dict[int, str] = {}  # num_classes -> checkpoint path
+_DEFAULT_NUM_CLASSES: Optional[int] = None
+
+
+def load_all_models() -> None:
+    """Load all discovered checkpoint models into memory."""
+    global _MODELS, _AVAILABLE_CHECKPOINTS, _DEFAULT_NUM_CLASSES
+    
+    _AVAILABLE_CHECKPOINTS = discover_all_checkpoints("finetune")
+    
+    if not _AVAILABLE_CHECKPOINTS:
+        raise RuntimeError(
+            f"No checkpoints found in {FINETUNE_DIR}. "
+            "Expected folders like 'best_finetune-N-class' containing 'best.ckpt'."
+        )
+    
+    # Set default to the highest class count
+    _DEFAULT_NUM_CLASSES = max(_AVAILABLE_CHECKPOINTS.keys())
+    
+    for num_classes, ckpt_path in _AVAILABLE_CHECKPOINTS.items():
+        print(f"Loading model: {ckpt_path} ({num_classes} classes)")
+        model = StrokeNet.load_from_checkpoint(ckpt_path, num_classes=num_classes)
+        model.eval()
+        model.to(t.device("cpu"))
+        _MODELS[num_classes] = model
+    
+    print(f"Loaded {len(_MODELS)} model(s). Default: {_DEFAULT_NUM_CLASSES} classes")
+
+
+def get_model(num_classes: Optional[int] = None) -> StrokeNet:
+    """
+    Get a loaded model by class count.
+    
+    Args:
+        num_classes: Number of classes for the model. If None, uses default (highest).
+    
+    Returns:
+        The loaded StrokeNet model.
+    
+    Raises:
+        KeyError: If no model with the requested class count is available.
+    """
+    if num_classes is None:
+        num_classes = _DEFAULT_NUM_CLASSES
+    
+    if num_classes not in _MODELS:
+        raise KeyError(f"No model available for {num_classes} classes")
+    
+    return _MODELS[num_classes]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Preload model on startup to avoid cold start latency."""
-    get_model()
+    """Preload all models on startup to avoid cold start latency."""
+    load_all_models()
     yield
 
 
 app = FastAPI(
     title="scribble API",
     description="Decode mouse movements into characters using StrokeNet CNN",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -79,7 +117,6 @@ app.add_middleware(
 )
 
 CHAR_MAP = build_char_map()
-_MODEL = None
 
 
 class VelocityPoint(BaseModel):
@@ -89,6 +126,7 @@ class VelocityPoint(BaseModel):
 
 class PredictRequest(BaseModel):
     velocities: List[VelocityPoint]
+    num_classes: Optional[int] = None  # If None, uses default (highest available)
 
 
 class PredictResponse(BaseModel):
@@ -97,21 +135,12 @@ class PredictResponse(BaseModel):
     inference_ms: float
     image_base64: str
     image_data_url: str
+    num_classes: int  # Which model variant was used
 
 
-def get_model() -> StrokeNet:
-    """Lazy-load and cache the StrokeNet model."""
-    global _MODEL
-    if _MODEL is None:
-        print(f"Loading checkpoint: {DEFAULT_CKPT_PATH} ({DEFAULT_NUM_CLASSES} classes)")
-        model = StrokeNet.load_from_checkpoint(
-            DEFAULT_CKPT_PATH,
-            num_classes=DEFAULT_NUM_CLASSES,
-        )
-        model.eval()
-        model.to(t.device("cpu"))
-        _MODEL = model
-    return _MODEL
+class ModelsResponse(BaseModel):
+    available: List[int]  # List of available num_classes values
+    default: int  # The default num_classes (highest)
 
 
 def parse_velocities_from_list(velocity_points: List[VelocityPoint]) -> np.ndarray:
@@ -135,7 +164,11 @@ def build_png_base64(img_tensor: t.Tensor) -> str:
 @app.get("/health")
 def health_check():
     """Health check endpoint for load balancers and monitoring."""
-    return {"status": "healthy", "model_loaded": _MODEL is not None}
+    return {
+        "status": "healthy",
+        "models_loaded": len(_MODELS),
+        "available_classes": sorted(_AVAILABLE_CHECKPOINTS.keys()),
+    }
 
 
 @app.get("/")
@@ -143,10 +176,25 @@ def root():
     """Root endpoint with API info."""
     return {
         "name": "scribble API",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "docs": "/docs",
         "health": "/health",
+        "models": "/models",
     }
+
+
+@app.get("/models", response_model=ModelsResponse)
+def list_models():
+    """
+    List available model variants.
+    
+    Returns the available num_classes values and which one is the default.
+    Use these values in the `num_classes` field of POST /predict requests.
+    """
+    return ModelsResponse(
+        available=sorted(_AVAILABLE_CHECKPOINTS.keys()),
+        default=_DEFAULT_NUM_CLASSES,
+    )
 
 
 @app.post("/predict", response_model=PredictResponse)
@@ -154,23 +202,38 @@ async def predict_letter(request: PredictRequest):
     """
     Predict a character from mouse velocity data.
 
-    Accepts a list of velocity points (vx, vy) and returns:
-    - predicted_char: The predicted character (a-z, A-Z, or space)
+    Request body:
+    - velocities: List of velocity points [{vx, vy}, ...]
+    - num_classes: (optional) Which model variant to use. Get available values
+      from GET /models. If omitted, uses the default (highest class count).
+
+    Response:
+    - predicted_char: The predicted character (a-z, A-Z, 0-9, or space)
     - confidence: Prediction confidence as percentage (0-100)
     - inference_ms: Model inference time in milliseconds
     - image_base64: The rendered stroke image as base64 PNG
     - image_data_url: Ready-to-use data URL for <img> tags
+    - num_classes: Which model variant was used for this prediction
     """
     velocities = parse_velocities_from_list(request.velocities)
     if velocities.size == 0:
         raise HTTPException(status_code=400, detail="No velocity samples provided.")
+
+    # Validate and get the requested model
+    num_classes = request.num_classes if request.num_classes is not None else _DEFAULT_NUM_CLASSES
+    if num_classes not in _MODELS:
+        available = sorted(_AVAILABLE_CHECKPOINTS.keys())
+        raise HTTPException(
+            status_code=400,
+            detail=f"No model available for {num_classes} classes. Available: {available}"
+        )
 
     x_pos, y_pos = velocities_to_positions(velocities)
     x_tensor = t.from_numpy(x_pos).to(dtype=t.float32)
     y_tensor = t.from_numpy(y_pos).to(dtype=t.float32)
     img = build_img(x_tensor, y_tensor, invert_colors=False)
 
-    model = get_model()
+    model = get_model(num_classes)
     img_batch = img.unsqueeze(0).unsqueeze(0)
     char_probs, predicted_char, inference_time = forward_pass(
         model, img_batch, CHAR_MAP, log_time=True
@@ -184,6 +247,7 @@ async def predict_letter(request: PredictRequest):
         inference_ms=inference_time * 1000.0,
         image_base64=image_base64,
         image_data_url=f"data:image/png;base64,{image_base64}",
+        num_classes=num_classes,
     )
 
 

@@ -257,311 +257,21 @@ This encrypts both legs:
 After DNS propagates:
 
 ```bash
+# Check health and available models
 curl https://api.hectorastrom.com/health
 
+# List available model variants
+curl https://api.hectorastrom.com/models
+
+# Test prediction (uses default model - highest class count)
 curl -X POST https://api.hectorastrom.com/predict \
   -H "Content-Type: application/json" \
   -d '{"velocities":[{"vx":1,"vy":0},{"vx":2,"vy":1},{"vx":1,"vy":2}]}'
-```
 
-## Embedding in Next.js
-
-The widget needs to be converted to a React component for Next.js. Create this component:
-
-### `components/scribbleWidget.tsx`
-
-```tsx
-"use client";
-
-import { useCallback, useEffect, useRef, useState } from "react";
-
-const API_BASE = "https://api.hectorastrom.com";
-
-interface PredictResponse {
-  predicted_char: string;
-  confidence: number;
-  inference_ms: number;
-  image_data_url: string;
-}
-
-export default function scribbleWidget() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [output, setOutput] = useState("");
-  const [confidence, setConfidence] = useState<string>("--");
-  const [inferenceMs, setInferenceMs] = useState<string>("--");
-  const [previewSrc, setPreviewSrc] = useState<string>("");
-  const [error, setError] = useState<string>("");
-
-  // Recording state refs (to avoid stale closures in event handlers)
-  const recordingActive = useRef(false);
-  const velocities = useRef<{ vx: number; vy: number }[]>([]);
-  const currentPos = useRef<{ x: number; y: number } | null>(null);
-  const lastLoggedPos = useRef<{ x: number; y: number } | null>(null);
-  const lastMoveTime = useRef(0);
-  const lastDrawPos = useRef<{ x: number; y: number } | null>(null);
-  const samplingTimer = useRef<NodeJS.Timeout | null>(null);
-
-  const sampleIntervalMs = 10;
-  const inactivityMs = 250;
-  const minSamples = 3;
-
-  const clearCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, []);
-
-  const drawLine = useCallback(
-    (from: { x: number; y: number }, to: { x: number; y: number }) => {
-      const ctx = canvasRef.current?.getContext("2d");
-      if (!ctx) return;
-      ctx.strokeStyle = "#111111";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    },
-    []
-  );
-
-  const stopRecording = useCallback(async () => {
-    recordingActive.current = false;
-    if (samplingTimer.current) {
-      clearInterval(samplingTimer.current);
-      samplingTimer.current = null;
-    }
-
-    const vels = velocities.current;
-    if (vels.length === 0) return;
-
-    clearCanvas();
-
-    try {
-      const response = await fetch(`${API_BASE}/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ velocities: vels }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP ${response.status}`);
-      }
-
-      const data: PredictResponse = await response.json();
-
-      setOutput((prev) => prev + data.predicted_char);
-      setConfidence(`${data.confidence.toFixed(1)}%`);
-      setInferenceMs(`${data.inference_ms.toFixed(1)}ms`);
-      setPreviewSrc(data.image_data_url);
-      setError("");
-    } catch (err) {
-      console.error("Prediction failed:", err);
-      setError(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-
-    velocities.current = [];
-    lastDrawPos.current = null;
-  }, [clearCanvas]);
-
-  const sampleVelocity = useCallback(() => {
-    if (!recordingActive.current || !currentPos.current || !lastLoggedPos.current)
-      return;
-
-    const vx = currentPos.current.x - lastLoggedPos.current.x;
-    const vy = currentPos.current.y - lastLoggedPos.current.y;
-    lastLoggedPos.current = { ...currentPos.current };
-    velocities.current.push({ vx, vy });
-
-    if (
-      performance.now() - lastMoveTime.current >= inactivityMs &&
-      velocities.current.length >= minSamples
-    ) {
-      stopRecording();
-    }
-  }, [stopRecording]);
-
-  const startRecording = useCallback(
-    (pos: { x: number; y: number }) => {
-      recordingActive.current = true;
-      velocities.current = [];
-      currentPos.current = { ...pos };
-      lastLoggedPos.current = { ...pos };
-      lastMoveTime.current = performance.now();
-
-      if (samplingTimer.current) clearInterval(samplingTimer.current);
-      samplingTimer.current = setInterval(sampleVelocity, sampleIntervalMs);
-    },
-    [sampleVelocity]
-  );
-
-  const getCanvasPos = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return { x: 0, y: 0 };
-
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-
-      let clientX: number, clientY: number;
-      if ("touches" in e && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else if ("clientX" in e) {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      } else {
-        return { x: 0, y: 0 };
-      }
-
-      return {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top) * scaleY,
-      };
-    },
-    []
-  );
-
-  const handleMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
-      const pos = getCanvasPos(e);
-
-      if (!recordingActive.current) {
-        startRecording(pos);
-      }
-
-      currentPos.current = pos;
-      lastMoveTime.current = performance.now();
-
-      if (lastDrawPos.current) {
-        drawLine(lastDrawPos.current, pos);
-      }
-      lastDrawPos.current = { ...pos };
-    },
-    [getCanvasPos, startRecording, drawLine]
-  );
-
-  const handleLeave = useCallback(() => {
-    lastDrawPos.current = null;
-  }, []);
-
-  const handleClear = useCallback(() => {
-    setOutput("");
-    setConfidence("--");
-    setInferenceMs("--");
-    setPreviewSrc("");
-    setError("");
-  }, []);
-
-  useEffect(() => {
-    clearCanvas();
-    return () => {
-      if (samplingTimer.current) clearInterval(samplingTimer.current);
-    };
-  }, [clearCanvas]);
-
-  return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between bg-white border border-gray-300 rounded-t-lg p-3">
-        <div
-          className="font-mono text-sm bg-gray-50 border border-gray-200 rounded px-3 py-2 min-w-[200px] max-w-[400px] min-h-[24px] break-words text-gray-800"
-        >
-          {output || <span className="text-gray-400">Start drawing...</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 border border-gray-300 rounded bg-white overflow-hidden">
-            {previewSrc && (
-              <img src={previewSrc} alt="preview" className="w-full h-full" />
-            )}
-          </div>
-          <div className="font-mono text-xs text-right text-gray-500 min-w-[100px]">
-            <div>conf: {confidence}</div>
-            <div>time: {inferenceMs}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="border border-t-0 border-gray-300 rounded-b-lg bg-white p-3">
-        <canvas
-          ref={canvasRef}
-          width={640}
-          height={360}
-          className="w-full h-auto block bg-white border border-gray-300 rounded-md cursor-crosshair touch-none"
-          onMouseMove={handleMove}
-          onMouseLeave={handleLeave}
-          onTouchMove={handleMove}
-          onTouchEnd={handleLeave}
-        />
-        <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
-          <span>Move mouse over canvas to draw. Pause briefly between characters.</span>
-          <button
-            onClick={handleClear}
-            className="bg-gray-100 border border-gray-300 rounded px-2 py-1 text-gray-600 hover:bg-gray-200"
-          >
-            Clear Output
-          </button>
-        </div>
-        {error && <div className="text-red-600 text-xs mt-2">{error}</div>}
-      </div>
-    </div>
-  );
-}
-```
-
-### Usage in a Blog Post Page
-
-```tsx
-// app/blog/scribble/page.tsx
-import scribbleWidget from "@/components/scribbleWidget";
-
-export default function scribbleBlogPost() {
-  return (
-    <article className="prose lg:prose-xl mx-auto py-8">
-      <h1>scribble: Decoding Characters from Mouse Movement</h1>
-
-      <p>
-        Try it yourself! Draw characters with your mouse and watch the model
-        decode them in real-time.
-      </p>
-
-      <div className="not-prose my-8">
-        <scribbleWidget />
-      </div>
-
-      <p>
-        The model runs on a lightweight CNN that processes your mouse velocity
-        data and classifies it into one of 63 characters (a-z, A-Z, 0-9, space)...
-      </p>
-    </article>
-  );
-}
-```
-
-### Alternative: Iframe Embed
-
-If you prefer not to add a React component, you can host `widget.html` as a static file and embed it:
-
-```tsx
-// In your Next.js page
-export default function scribbleBlogPost() {
-  return (
-    <article>
-      <h1>scribble</h1>
-      <iframe
-        src="/scribble-widget.html"
-        width="100%"
-        height="500"
-        style={{ border: "none", borderRadius: "8px" }}
-      />
-    </article>
-  );
-}
+# Test prediction with specific model variant
+curl -X POST https://api.hectorastrom.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{"velocities":[{"vx":1,"vy":0},{"vx":2,"vy":1},{"vx":1,"vy":2}], "num_classes": 53}'
 ```
 
 Place `widget.html` in your `public/` directory as `public/scribble-widget.html`.
@@ -574,7 +284,11 @@ Health check endpoint.
 
 **Response:**
 ```json
-{"status": "healthy", "model_loaded": true}
+{
+  "status": "healthy",
+  "models_loaded": 2,
+  "available_classes": [53, 63]
+}
 ```
 
 ### `GET /`
@@ -583,7 +297,25 @@ Root endpoint with API info.
 
 **Response:**
 ```json
-{"name": "scribble API", "version": "1.0.0", "docs": "/docs", "health": "/health"}
+{
+  "name": "scribble API",
+  "version": "1.1.0",
+  "docs": "/docs",
+  "health": "/health",
+  "models": "/models"
+}
+```
+
+### `GET /models`
+
+List available model variants. Use these values in the `num_classes` field of `/predict` requests.
+
+**Response:**
+```json
+{
+  "available": [53, 63],
+  "default": 63
+}
 ```
 
 ### `POST /predict`
@@ -596,9 +328,15 @@ Predict character from mouse velocity data.
   "velocities": [
     {"vx": 1.5, "vy": 0.0},
     {"vx": 2.0, "vy": 1.0}
-  ]
+  ],
+  "num_classes": 63
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `velocities` | array | Yes | List of velocity points `{vx, vy}` |
+| `num_classes` | int | No | Model variant to use. If omitted, uses default (highest available). Get valid values from `GET /models`. |
 
 **Response:**
 ```json
@@ -607,9 +345,18 @@ Predict character from mouse velocity data.
   "confidence": 94.5,
   "inference_ms": 2.3,
   "image_base64": "iVBORw0KGgo...",
-  "image_data_url": "data:image/png;base64,iVBORw0KGgo..."
+  "image_data_url": "data:image/png;base64,iVBORw0KGgo...",
+  "num_classes": 63
 }
 ```
+
+**Error Response (invalid num_classes):**
+```json
+{
+  "detail": "No model available for 70 classes. Available: [53, 63]"
+}
+```
+Status code: 400
 
 ## Monitoring & Maintenance
 
@@ -628,10 +375,12 @@ sudo systemctl restart scribble-api
 ### Update Code
 
 ```bash
-cd ~/scribble
+cd ~/projects/scribble
 git pull
 sudo systemctl restart scribble-api
 ```
+
+Note: On restart, all `best_finetune-N-class` checkpoints are automatically discovered and loaded. Add new model variants by placing them in `checkpoints/mouse_finetune/best_finetune-N-class/best.ckpt`.
 
 ## Cost Estimate
 
@@ -639,55 +388,3 @@ sudo systemctl restart scribble-api
 - **t3.medium** (2 vCPU, 4GB): ~$30/month
 - **Cloudflare**: Free tier is sufficient
 - **Data transfer**: Minimal (small JSON payloads)
-
-Use Spot Instances or Reserved Instances for additional savings.
-
-## Troubleshooting
-
-### API returns 502 Bad Gateway
-
-Check if the service is running:
-```bash
-sudo systemctl status scribble-api
-sudo journalctl -u scribble-api --since "5 minutes ago"
-```
-
-### CORS errors in browser console
-
-Ensure your domain is in `ALLOWED_ORIGINS` in `main.py`:
-```python
-ALLOWED_ORIGINS = [
-    "https://hectorastrom.com",
-    "https://www.hectorastrom.com",
-    # ... add any other domains
-]
-```
-Restart the service after changes.
-
-### SSL errors / "Origin Certificate" issues
-
-1. Verify Cloudflare SSL mode is set to **Full (strict)**
-2. Check that origin certificate files exist and have correct permissions:
-   ```bash
-   ls -la /etc/ssl/cloudflare/
-   sudo nginx -t
-   ```
-
-### DNS not resolving
-
-1. Check Cloudflare DNS dashboard for the A record
-2. Verify proxy status is enabled (orange cloud)
-3. Wait a few minutes for propagation
-4. Test with: `dig api.hectorastrom.com`
-
-### Model loading fails
-
-Verify checkpoint exists:
-```bash
-ls -la ~/scribble/checkpoints/mouse_finetune/best_finetune/best.ckpt
-```
-
-Set custom path via environment variable in the systemd service:
-```ini
-Environment="STROKNET_CKPT_PATH=/path/to/your/checkpoint.ckpt"
-```
