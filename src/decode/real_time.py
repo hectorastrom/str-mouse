@@ -24,10 +24,9 @@ from src.data.utils import (
     csv_to_numpy,
     velocities_to_positions,
     GlobalInputManager,
-    NUM_FINETUNE_CLASSES,
 )
 from src.ml.architectures.cnn import StrokeNet
-from src.ml.utils import forward_pass
+from src.ml.utils import forward_pass, find_best_checkpoint, get_checkpoint_num_classes, FINETUNE_DIR
 
 from datetime import datetime
 import time
@@ -43,18 +42,29 @@ ROOT_DIR = None
 
 def main():
     # 0: setup
+    # Find best checkpoint as default
+    default_ckpt, default_num_classes = find_best_checkpoint("finetune")
+    
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt", type=str, default="polar-water-38", 
-                        help="Finetune checkpoint to evaluate model with")
+    parser.add_argument("--ckpt", type=str, default=default_ckpt, 
+                        help=f"Finetune checkpoint to evaluate model with from {FINETUNE_DIR} directory (default: {default_ckpt})")
     parser.add_argument("--save-delay", type=int, default=500,
                         help="Time in ms to wait before marking a stroke as a char (default 500ms)")
     args = parser.parse_args()
 
+    # Determine num_classes from checkpoint name, fall back to default
+    num_classes = get_checkpoint_num_classes(args.ckpt)
+    if num_classes is None:
+        num_classes = default_num_classes
+        print(f"Warning: Could not determine num_classes from '{args.ckpt}', using {num_classes}")
+    
     global ROOT_DIR
     input_manager = GlobalInputManager()
+    ckpt_path = f"{FINETUNE_DIR}/{args.ckpt}/best.ckpt"
+    print(f"Loading checkpoint: {ckpt_path} ({num_classes} classes)")
     model = StrokeNet.load_from_checkpoint(
-        f"checkpoints/mouse_finetune/{args.ckpt}/best.ckpt",
-        num_classes=NUM_FINETUNE_CLASSES,
+        ckpt_path,
+        num_classes=num_classes,
     )
     model.eval()
     char_map = build_char_map()

@@ -16,15 +16,32 @@ from src.data.utils import (
     build_char_map,
     build_img,
     velocities_to_positions,
-    NUM_FINETUNE_CLASSES,
 )
 from src.ml.architectures.cnn import StrokeNet
-from src.ml.utils import forward_pass
+from src.ml.utils import forward_pass, find_best_checkpoint, get_checkpoint_num_classes, FINETUNE_DIR
 
-DEFAULT_CKPT_PATH = os.environ.get(
-    "STROKNET_CKPT_PATH",
-    "checkpoints/mouse_finetune/best_finetune/best.ckpt"
-)
+
+def _get_default_ckpt_config() -> tuple[str, int]:
+    """
+    Get default checkpoint path and num_classes.
+    
+    Uses STROKNET_CKPT_PATH env var if set, otherwise finds the best checkpoint.
+    """
+    env_path = os.environ.get("STROKNET_CKPT_PATH")
+    if env_path:
+        # Extract num_classes from env path if possible
+        num_classes = get_checkpoint_num_classes(env_path)
+        if num_classes is None:
+            # Fallback: try to find best checkpoint for class count
+            _, num_classes = find_best_checkpoint("finetune")
+        return env_path, num_classes
+    
+    # Find best checkpoint dynamically
+    best_folder, num_classes = find_best_checkpoint("finetune")
+    return f"{FINETUNE_DIR}/{best_folder}/best.ckpt", num_classes
+
+
+DEFAULT_CKPT_PATH, DEFAULT_NUM_CLASSES = _get_default_ckpt_config()
 APP_DIR = os.path.dirname(__file__)
 WIDGET_PATH = os.path.join(APP_DIR, "widget.html")
 
@@ -86,9 +103,10 @@ def get_model() -> StrokeNet:
     """Lazy-load and cache the StrokeNet model."""
     global _MODEL
     if _MODEL is None:
+        print(f"Loading checkpoint: {DEFAULT_CKPT_PATH} ({DEFAULT_NUM_CLASSES} classes)")
         model = StrokeNet.load_from_checkpoint(
             DEFAULT_CKPT_PATH,
-            num_classes=NUM_FINETUNE_CLASSES,
+            num_classes=DEFAULT_NUM_CLASSES,
         )
         model.eval()
         model.to(t.device("cpu"))

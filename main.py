@@ -7,7 +7,7 @@
 # message inside mouse_velocities.csv
 
 from src.data.utils import build_img, build_char_map, build_inverse_char_map
-from src.ml.utils import forward_pass
+from src.ml.utils import forward_pass, find_best_checkpoint, get_checkpoint_num_classes, FINETUNE_DIR
 import torch as t
 from torchvision.transforms.functional import to_pil_image
 from src.ml.architectures.cnn import StrokeNet
@@ -17,19 +17,32 @@ import matplotlib.pyplot as plt
 
 
 def main():
+    # Find best checkpoint as default
+    default_ckpt, default_num_classes = find_best_checkpoint("finetune")
+    
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ckpt", type=str, required=True, help="Finetune checkpoint to use"
+        "--ckpt", type=str, default=default_ckpt,
+        help=f"Finetune checkpoint to use from {FINETUNE_DIR} directory (default: {default_ckpt})"
     )
     args = parser.parse_args()
+    
+    # Determine num_classes from checkpoint name, fall back to default
+    num_classes = get_checkpoint_num_classes(args.ckpt)
+    if num_classes is None:
+        num_classes = default_num_classes
+        print(f"Warning: Could not determine num_classes from '{args.ckpt}', using {num_classes}")
+    
     char_map = build_char_map()
     inverse_char_map = build_inverse_char_map()
     chunks = integrate_file("mouse_velocities.csv", silent=True)
     complete_str = ""
     # load finetuned model
+    ckpt_path = f"{FINETUNE_DIR}/{args.ckpt}/best.ckpt"
+    print(f"Loading checkpoint: {ckpt_path} ({num_classes} classes)")
     model = StrokeNet.load_from_checkpoint(
-        f"checkpoints/mouse_finetune/{args.ckpt}/best.ckpt",
-        num_classes=53,
+        ckpt_path,
+        num_classes=num_classes,
     )
     model.eval()
 

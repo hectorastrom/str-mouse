@@ -26,12 +26,12 @@ checkpoints/*
 # crazy work just to allow two checkpoints to be unignored...
 !checkpoints/mouse_finetune/ 
 checkpoints/mouse_finetune/*
-!checkpoints/mouse_finetune/best_finetune/
-!checkpoints/mouse_finetune/best_finetune/**
+!checkpoints/mouse_finetune/best_finetune*/
+!checkpoints/mouse_finetune/best_finetune*/**
 !checkpoints/emnist_pretrain/
 checkpoints/emnist_pretrain/*
-!checkpoints/emnist_pretrain/best_pretrain/
-!checkpoints/emnist_pretrain/best_pretrain/**
+!checkpoints/emnist_pretrain/best_pretrain*/
+!checkpoints/emnist_pretrain/best_pretrain*/**
 
 
 # misc
