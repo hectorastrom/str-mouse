@@ -23,6 +23,15 @@ public.
 
 Read about this attempt at [attempt 2](attempt_2.md).
 
+### Attempt 2.5
+Attempt 2.5 is not so much an attempt as it is an *iteration* of attempt 2. 
+
+Attempt 2.5 fixes a glaring oversight by pretraining on a different, more
+domain-accurate (and larger) EMNIST dataset. It also adds support for digits, in
+addition to the uppercase and lowercase letters.
+
+Attempt 3 builds directly on this new, revised attempt 2.
+
 ### Attempt 3 (ongoing)
 Attempt 3 is the lowest information-loss attempt at mouse velocity decoding.
 Rather than converting the timeseries representation to a 2D plot, we'll use the

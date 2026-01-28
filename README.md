@@ -17,23 +17,16 @@ This repository contains many, many files. If you just want to get started and
 play around with it, run:
 
 ```bash
+# Try it
 uv run -m src.decode.real_time --ckpt best_finetune
-```
 
-### Train it
-If you want to collect some data and train the model, first run:
-```bash
+# Collect some data
 uv run -m src.data.collect_data
-```
 
-Then run:
-```bash
+# Train it
 uv run -m src.ml.finetune --ckpt best_pretrain
-```
 
-### Test it
-To test your new model on sample velocity data, run:
-```bash
+# Test it
 uv run main.py --ckpt <ckpt_name>
 ```
 
@@ -42,7 +35,7 @@ uv run main.py --ckpt <ckpt_name>
 My best finetuned model achieved `92.9%` accuracy on its offline test set, and
 feels pretty good online, too.
 
-All detailed results can be found in [attempt 2 results](docs/attempt_2.md/#finetuning-results)
+All detailed results can be found in [attempt 2 results](docs/attempt_2.md)
 
 
 ## Data

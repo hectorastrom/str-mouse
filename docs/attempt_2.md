@@ -15,11 +15,17 @@ There are two primary datasets involved in this attempt:
 
 **EMNIST**
 
-Firstly, I benefitted from EMNIST - an online dataset of (among other things)
-lowercase handwritten characters. This was a rich dataset and easy to get set
-up, so we could use it for pretraining of our CNN. 
+Firstly, I benefitted from [EMNIST](https://www.nist.gov/itl/products-and-services/emnist-dataset) - an online dataset of handwritten characters. 
 
-There are `124800` training samples (1x28x28 images)
+This was a rich dataset and easy to get setup, so we could use it for
+pretraining of our CNN. 
+
+Originally in attempt 2, we used the `letters` split of the EMNIST dataset, which combined
+uppercase + lowercase character drawings into 26 characters. In [attempt
+2.5](attempt_2-5.md) I fix this by using the 62-class `byclass` split of the
+dataset. I missed this split of the data when I was first building this project,
+though the feature detections learned on these case-agnostic labels were
+evidently sufficient for a decent result.
 
 **My own mouse data**
 
